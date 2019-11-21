@@ -19,7 +19,11 @@ class KernelPlusService
     private $router;
     private $annotate;
 
-    private $registerCommandAll;
+    // 是否全局注册过commands集合
+    private $registeredCommandAll;
+
+    // 已注册的调度的commands
+    private $scheduleLoadCommands;
 
     /**
      * KernelPlusService constructor.
@@ -33,31 +37,32 @@ class KernelPlusService
         $this->argvInput = $input;
         $this->router = $this->app->make('qklin.kernel.plus.router');
         $this->annotate = $this->app->make('qklin.kernel.plus.annotate');
-        $this->registerCommandAll = false;
+        $this->registeredCommandAll = false;
+        $this->scheduleLoadCommands = [];
     }
 
     /**
      * 注册commands入口
      * @throws \ReflectionException
      */
-    public function registerCommands(Kernel $kernel = null)
+    public function registerCommands(Kernel $kernel)
     {
         // 加载配置
         $this->app->configure('kernel_plus');
         $kernelPlusConfig = config('kernel_plus');
 
-        // 加载所有的command
-        if (!is_null($kernel)) {
-            $kernel->loadCommandFromDirs(array_map(function ($v) {
-                return app()->basePath() . DIRECTORY_SEPARATOR . $v;
-            }, $kernelPlusConfig['load_cmd_dirs']));
-            $this->registerCommandAll = true;
-            return;
-        }
-
         // 自动注入command
         $commandSign = $this->argvInput->getFirstArgument();
         if (!$commandSign) {
+            return;
+        }
+
+        // 加载所有的command，传入kernel 或 签名为: list
+        if ($kernel instanceof Kernel && $commandSign == 'list') {
+            $kernel->loadCommandFromDirs(array_map(function ($v) {
+                return app()->basePath() . DIRECTORY_SEPARATOR . $v;
+            }, $kernelPlusConfig['load_cmd_dirs']), $this);
+            $this->registeredCommandAll = true;
             return;
         }
 
@@ -68,8 +73,8 @@ class KernelPlusService
 
     /**
      * 调度入口
+     * 用于调度schedule:run
      * @param Schedule $schedule
-     * @param bool     $regCommands
      */
     public function schedule(Schedule $schedule)
     {
@@ -86,13 +91,11 @@ class KernelPlusService
             return;
         }
 
-        $this->scheduleFromDirs($schedule, $kernelPlusConfig['load_cmd_dirs'], $this->registerCommandAll);
+        $this->scheduleFromDirs($schedule, $kernelPlusConfig['load_cmd_dirs']);
     }
 
     /**
      * @param $commandSign
-     * @return array
-     * @throws BindingResolutionException
      * @throws \ReflectionException
      */
     public function command($commandSign)
@@ -137,9 +140,8 @@ class KernelPlusService
      * 注册command和加入调度器
      * @param Schedule $schedule
      * @param array    $pathsArr
-     * @param bool     $regCommand
      */
-    public function scheduleFromDirs(Schedule $schedule, $pathsArr = [], $regCommand = false)
+    public function scheduleFromDirs(Schedule $schedule, $pathsArr = [])
     {
         $pathsArr = array_unique(Arr::wrap($pathsArr));
         $pathsArr = array_filter($pathsArr, function ($file) {
@@ -159,7 +161,7 @@ class KernelPlusService
             }
 
             // 注册command
-            if ($regCommand) {
+            if (!$this->registeredCommandAll && !isset($this->scheduleLoadCommands[$cmdClass])) {
                 $this->resolveCommand($cmdClass, $commandHandleAnnotate);
             }
 
@@ -174,9 +176,19 @@ class KernelPlusService
      */
     public function resolveCommand($commandClass, $commandHandleAnnotate = [])
     {
+        // 如果已经注册，直接返回
+        if (isset($this->scheduleLoadCommands[$commandClass])) {
+            return;
+        }
+
         // 无，重新获取一次
         if (empty($commandHandleAnnotate)) {
             $commandHandleAnnotate = app('qklin.kernel.plus.cmds')->getCommandHandleAnnotate($commandClass);
+        }
+
+        // 如果还无，直接返回
+        if (empty($commandHandleAnnotate)) {
+            return;
         }
 
         // 无需注册，返回
@@ -187,6 +199,8 @@ class KernelPlusService
         Artisan::starting(function ($artisan) use ($commandClass) {
             $artisan->resolve($commandClass);
         });
+
+        $this->scheduleLoadCommands[$commandClass] = $commandHandleAnnotate['cmd_sign'];
     }
 
     /**
@@ -239,10 +253,12 @@ class KernelPlusService
             if ($runTimeAction === 'cron') {
                 $runTimeActionArgs = trim($runTimeAction[1] ?? "");
             }
+
+            // 执行
             if ($runTimeActionArgs) {
                 $commandInstance->{$runTimeAction}($runTimeActionArgs);
             } else {
-                $runTimeActionArgs->{$runTimeAction}();
+                $commandInstance->{$runTimeAction}();
             }
         }
 
