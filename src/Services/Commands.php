@@ -22,6 +22,7 @@ class Commands
     {
         $classFiles = [];
         foreach ($pathDirar as $path) {
+            $path = app()->basePath($path);
             if (is_file($path)) {
                 $this->pushCmdFile($classFiles, $path);
             } else {
@@ -75,6 +76,9 @@ class Commands
             $commandFile
         );
 
+        // 首字母大写
+        $commandClass = str_replace(["app\\"], ["App\\"], $commandClass);
+
         $cmdReflection = (new \ReflectionClass($commandClass));
         if (!$cmdReflection->isAbstract()
             && $cmdReflection->isSubclassOf(Command::class)) {
@@ -120,7 +124,7 @@ class Commands
         // 开启command，且注解废弃:deprecated
         if ((isset($docParams[$command]) && $docParams[$command] != "true")
             || isset($docParams[$deprecated])) {
-            return false;
+            return $commandHandleAnnotate;
         }
 
         $commandHandleAnnotate['doc_params'] = $docParams;

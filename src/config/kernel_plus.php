@@ -7,7 +7,7 @@ return [
         'list',
     ],
     'load_cmd_dirs'  => [
-        app()->basePath('App/Console/Commands'),
-        app()->basePath('App/' . env('KERNEL_PLUS_MODULE_DIR', 'Biz')),
+        'app/Console/Commands',
+        'app/' . env('KERNEL_PLUS_MODULE_DIR', 'Biz'),
     ]
 ];

@@ -3,6 +3,7 @@
 namespace Qklin\Kernel\Plus\Services;
 
 use Exception;
+use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Console\Application as Artisan;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Container\BindingResolutionException;
@@ -18,6 +19,8 @@ class KernelPlusService
     private $router;
     private $annotate;
 
+    private $registerCommandAll;
+
     /**
      * KernelPlusService constructor.
      * @param Application $app
@@ -30,15 +33,45 @@ class KernelPlusService
         $this->argvInput = $input;
         $this->router = $this->app->make('qklin.kernel.plus.router');
         $this->annotate = $this->app->make('qklin.kernel.plus.annotate');
+        $this->registerCommandAll = false;
     }
 
     /**
-     * 启动
-     * @param Schedule $schedule
-     * @throws BindingResolutionException
+     * 注册commands入口
      * @throws \ReflectionException
      */
-    public function handle(Schedule $schedule)
+    public function registerCommands(Kernel $kernel = null)
+    {
+        // 加载配置
+        $this->app->configure('kernel_plus');
+        $kernelPlusConfig = config('kernel_plus');
+
+        // 加载所有的command
+        if (!is_null($kernel)) {
+            $kernel->loadCommandFromDirs(array_map(function ($v) {
+                return app()->basePath() . DIRECTORY_SEPARATOR . $v;
+            }, $kernelPlusConfig['load_cmd_dirs']));
+            $this->registerCommandAll = true;
+            return;
+        }
+
+        // 自动注入command
+        $commandSign = $this->argvInput->getFirstArgument();
+        if (!$commandSign) {
+            return;
+        }
+
+        if (!in_array($commandSign, $kernelPlusConfig['laravel_expect'])) {
+            $this->command($commandSign);
+        }
+    }
+
+    /**
+     * 调度入口
+     * @param Schedule $schedule
+     * @param bool     $regCommands
+     */
+    public function schedule(Schedule $schedule)
     {
         $commandSign = $this->argvInput->getFirstArgument();
         if (!$commandSign) {
@@ -49,12 +82,11 @@ class KernelPlusService
         $this->app->configure('kernel_plus');
         $kernelPlusConfig = config('kernel_plus');
 
-        if (in_array($commandSign, $kernelPlusConfig['laravel_expect'])) {
-            $this->shecdule($schedule, $kernelPlusConfig['load_cmd_dirs']);
+        if (!in_array($commandSign, $kernelPlusConfig['laravel_expect'])) {
             return;
         }
 
-        $this->command($commandSign);
+        $this->scheduleFromDirs($schedule, $kernelPlusConfig['load_cmd_dirs'], $this->registerCommandAll);
     }
 
     /**
@@ -105,9 +137,9 @@ class KernelPlusService
      * 注册command和加入调度器
      * @param Schedule $schedule
      * @param array    $pathsArr
-     * @throws BindingResolutionException
+     * @param bool     $regCommand
      */
-    public function shecdule(Schedule $schedule, $pathsArr = [])
+    public function scheduleFromDirs(Schedule $schedule, $pathsArr = [], $regCommand = false)
     {
         $pathsArr = array_unique(Arr::wrap($pathsArr));
         $pathsArr = array_filter($pathsArr, function ($file) {
@@ -119,18 +151,39 @@ class KernelPlusService
 
         $commandClasses = app('qklin.kernel.plus.cmds')->getCommandsClasses($pathsArr);
         foreach ($commandClasses as $cmdClass) {
+
+            // 获取注解配置相关
+            $commandHandleAnnotate = app('qklin.kernel.plus.cmds')->getCommandHandleAnnotate($cmdClass);
+            if (empty($commandHandleAnnotate)) {
+                continue;
+            }
+
             // 注册command
-            $this->resolveCommand($cmdClass);
+            if ($regCommand) {
+                $this->resolveCommand($cmdClass, $commandHandleAnnotate);
+            }
+
             // 注册schedule
-            $this->resolveSchedule($schedule, $cmdClass);
+            $this->resolveSchedule($schedule, $commandHandleAnnotate);
         }
     }
 
     /**
      * @param $commandClass
+     * @param $commandHandleAnnotate
      */
-    public function resolveCommand($commandClass)
+    public function resolveCommand($commandClass, $commandHandleAnnotate = [])
     {
+        // 无，重新获取一次
+        if (empty($commandHandleAnnotate)) {
+            $commandHandleAnnotate = app('qklin.kernel.plus.cmds')->getCommandHandleAnnotate($commandClass);
+        }
+
+        // 无需注册，返回
+        if ($commandHandleAnnotate['doc_params'][$commandHandleAnnotate['doc_vars']['command']] !== "true") {
+            return;
+        }
+
         Artisan::starting(function ($artisan) use ($commandClass) {
             $artisan->resolve($commandClass);
         });
@@ -140,9 +193,8 @@ class KernelPlusService
      * @param Schedule $schedule
      * @param          $commandClass
      */
-    public function resolveSchedule(Schedule $schedule, $commandClass)
+    public function resolveSchedule(Schedule $schedule, $commandHandleAnnotate)
     {
-        $commandHandleAnnotate = app('qklin.kernel.plus.cmds')->getCommandHandleAnnotate($commandClass);
         $docVars = $commandHandleAnnotate['doc_vars'];
         $docParams = $commandHandleAnnotate['doc_params'];
 

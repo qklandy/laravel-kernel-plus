@@ -20,7 +20,6 @@ class KernelPlusProvider extends ServiceProvider
             return new KernelPlusService($app, new ArgvInput());
         });
 
-
         // 注册路由辅助工具
         if (!$this->app->bound('qklin.kernel.plus.router')) {
             $this->app->singleton('qklin.kernel.plus.router', function ($app) {
@@ -33,14 +32,5 @@ class KernelPlusProvider extends ServiceProvider
         if (!$this->app->bound('qklin.kernel.plus.cmds')) {
             $this->app->singleton('qklin.kernel.plus.cmds', Commands::class);
         }
-    }
-
-    /**
-     * 启动加载器
-     */
-    public function boot()
-    {
-        // 加入到kernel.php的schedule()里
-//        $this->app->make("qklin.kernel.plus.service")->handle();
     }
 }
