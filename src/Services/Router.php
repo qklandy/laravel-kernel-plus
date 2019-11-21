@@ -136,9 +136,9 @@ class Router
         if ($prefix == env('KERNEL_PLUS_ORIGIN_PREFIX', 'c')) {
             $commandClass = "\\App\\Console\\" . implode("\\", $cmdParamsArr);
         }
-        // 自定义的结构模块目录下，默认App\Modules
+        // 自定义的结构模块目录下，默认App\Biz
         if (in_array($prefix, explode(",", env('KERNEL_PLUS_MODULE_PREFIX', 'cm')))) {
-            $commandClass = "\\App\\" . env('KERNEL_PLUS_MODULE_DIR', 'Modules') . "\\" . implode("\\", $cmdParamsArr);
+            $commandClass = "\\App\\" . env('KERNEL_PLUS_MODULE_DIR', 'Biz') . "\\" . implode("\\", $cmdParamsArr);
         }
 
         return [
