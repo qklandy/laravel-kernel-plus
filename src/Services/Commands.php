@@ -70,6 +70,11 @@ class Commands
      */
     private function pushCmdFile(&$classFiles, $commandFile)
     {
+        // 跳过不是php文件
+        if (substr($commandFile, -4) != '.php') {
+            return;
+        }
+
         $commandClass = str_replace(
             [app()->basePath(), '/', '.php'],
             ['', '\\', ''],

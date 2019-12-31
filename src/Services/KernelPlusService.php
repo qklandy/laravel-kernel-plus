@@ -246,16 +246,17 @@ class KernelPlusService
         if ($docParams[$docVars['run_time']]) {
             // 有参数的方法暂只支持cron: [cron|* * * * *]
             $runTimeActionParams = $docParams[$docVars['run_time']];
-            $runTimeAction = explode("|", $runTimeActionParams);
-            $runTimeAction = $runTimeAction[0] ?? "";
+            $runTimeActionArr = explode("|", $runTimeActionParams);
+            $runTimeAction = $runTimeActionArr[0] ?? "";
             $runTimeAction = trim($runTimeAction);
             $runTimeActionArgs = "";
             if ($runTimeAction === 'cron') {
-                $runTimeActionArgs = trim($runTimeAction[1] ?? "");
+                $runTimeActionArgs = trim($runTimeActionArr[1] ?? "");
             }
 
             // 执行
             if ($runTimeActionArgs) {
+                $runTimeActionArgs = str_replace(["\\"], [""], $runTimeActionArgs);
                 $commandInstance->{$runTimeAction}($runTimeActionArgs);
             } else {
                 $commandInstance->{$runTimeAction}();
